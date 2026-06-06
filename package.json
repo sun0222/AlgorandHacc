@@ -1,0 +1,26 @@
+{
+  "name": "packroute-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Autonomous EU F&B packaging procurement agent with x402 on Algorand",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev -w @packroute/api\" \"npm run dev -w @packroute/web\"",
+    "dev:api": "npm run dev -w @packroute/api",
+    "dev:web": "npm run dev -w @packroute/web",
+    "build": "npm run build -w @packroute/mocks && npm run build -w @packroute/api && npm run build -w @packroute/web",
+    "start": "concurrently -n api,web \"npm run start -w @packroute/api\" \"npm run start -w @packroute/web\"",
+    "setup:testnet": "npm run setup:testnet -w @packroute/api",
+    "generate-wallet": "npm run generate-wallet -w @packroute/api",
+    "goal:accounts": "npm run goal:accounts -w @packroute/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
