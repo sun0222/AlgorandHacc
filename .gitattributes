@@ -1,0 +1,10 @@
+tools/node/algod filter=lfs diff=lfs merge=lfs -text
+tools/node/algoh filter=lfs diff=lfs merge=lfs -text
+tools/node/goal filter=lfs diff=lfs merge=lfs -text
+tools/node/diagcfg filter=lfs diff=lfs merge=lfs -text
+tools/node/algocfg filter=lfs diff=lfs merge=lfs -text
+tools/node/algokey filter=lfs diff=lfs merge=lfs -text
+tools/node/kmd filter=lfs diff=lfs merge=lfs -text
+tools/node/updater filter=lfs diff=lfs merge=lfs -text
+tools/node/node_exporter filter=lfs diff=lfs merge=lfs -text
+tools/node/algotmpl filter=lfs diff=lfs merge=lfs -text
