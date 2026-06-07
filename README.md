@@ -117,6 +117,12 @@ packroute-agent/
 - **Track:** Agentic Commerce ✅
 - **Bonus:** Quantoz EURQ (swap USDC asset in `apps/api/src/index.ts`) ✅
 
+
+## Demo Link
+- https://claude.ai/design/p/b35371b6-2874-40cb-92fc-0b93979a24fe?file=PackRoute%20Demo.html&present=1
+## PPT Link
+- https://claude.ai/design/p/104b5fd6-c59e-4c21-9867-65dbf2e48b9c?file=PackRoute%20Agent%20Pitch.html&present=1
+
 ## TestNet funding
 
 - **ALGO:** [Lora TestNet faucet](https://lora.algokit.io/)
