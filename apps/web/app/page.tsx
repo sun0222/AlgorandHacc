@@ -1,289 +1,322 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4021";
-const LORA = "https://lora.algokit.io/transaction";
+const LORA = "https://lora.algokit.io/testnet/transaction";
+const SESSION_KEY = "packroute_session_id";
 
-interface PaymentInfo {
-  mode: string;
-  demo_mode: boolean;
-  asset: string;
-  currency: string;
-  quantoz_enabled: boolean;
-}
-
-interface WalletState {
-  daily_spent_usd: number;
-  total_spent_usd: number;
-  max_daily_spend_usd: number;
-  max_single_tx_usd: number;
-  agent_address?: string;
+interface ChatMessage {
+  id: string;
+  role: "user" | "agent" | "system";
+  content: string;
+  timestamp: string;
 }
 
 interface JobStep {
   id: string;
   label: string;
-  status: "pending" | "running" | "done" | "error";
+  status: string;
   detail?: string;
   tx_id?: string;
 }
 
-interface SpendRecord {
-  endpoint: string;
-  amount_usd: number;
-  tx_id?: string;
-  demo?: boolean;
-  timestamp: string;
-}
-
 interface Job {
   id: string;
-  status: "queued" | "running" | "completed" | "failed";
+  status: string;
   steps: JobStep[];
-  spends: SpendRecord[];
+  spends: { endpoint: string; amount_usd: number; tx_id?: string; demo?: boolean }[];
   result?: {
-    supplier_name: string;
-    unit_price_eur: number;
-    freight_eur: number;
-    total_eur: number;
     order_id: string;
+    supplier_name: string;
+    total_usd: number;
     explanation: string;
-    quantity: number;
   };
   error?: string;
-  rules: {
-    max_unit_price_eur: number;
-    quantity: number;
-    corridor: string;
-    delivery_by: string;
-  };
 }
 
-function stepSymbol(status: JobStep["status"]): string {
-  if (status === "done") return "✓";
-  if (status === "running") return "…";
-  if (status === "error") return "✕";
-  return "○";
+function renderMarkdownLite(text: string): ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((p, i) =>
+    p.startsWith("**") && p.endsWith("**") ? (
+      <strong key={i}>{p.slice(2, -2)}</strong>
+    ) : (
+      <span key={i}>{p}</span>
+    ),
+  );
 }
 
 export default function HomePage() {
-  const [wallet, setWallet] = useState<WalletState | null>(null);
-  const [payment, setPayment] = useState<PaymentInfo | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [phase, setPhase] = useState("welcome");
+  const [verified, setVerified] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [payment, setPayment] = useState<{ demo_mode: boolean; asset: string } | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const [quantity, setQuantity] = useState(500);
-  const [maxUnit, setMaxUnit] = useState(0.85);
-  const [corridor, setCorridor] = useState("DE-NL");
-  const [deliveryBy, setDeliveryBy] = useState("2026-06-20");
+  const scrollDown = () => {
+    requestAnimationFrame(() => {
+      try {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      } catch (e) {
+        // fallback: no-op
+      }
+    });
+  };
 
-  const loadMeta = useCallback(async () => {
-    const [healthRes, walletRes] = await Promise.all([
-      fetch(`${API}/agent/health`),
-      fetch(`${API}/agent/wallet`),
-    ]);
-    const health: PaymentInfo = await healthRes.json();
-    const w = await walletRes.json();
-    setPayment(health);
-    setWallet(w);
+  const idsEqual = (a: ChatMessage[], b: ChatMessage[]) => {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i].id !== b[i].id) return false;
+    return true;
+  };
+
+  const refreshSession = useCallback(async (id: string) => {
+    const res = await fetch(`${API}/chat/sessions/${id}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    setMessages((prev) => {
+      if (idsEqual(prev || [], data.messages || [])) return prev;
+      return data.messages;
+    });
+    setPhase(data.phase);
+    setVerified(data.verified);
+    if (data.job) setJob(data.job);
   }, []);
 
   useEffect(() => {
-    void loadMeta();
-  }, [loadMeta]);
+    const health = fetch(`${API}/agent/health`).then((r) => r.json()).then(setPayment);
+    void health;
 
-  const pollJob = useCallback((jobId: string) => {
-    const interval = setInterval(async () => {
-      const res = await fetch(`${API}/agent/jobs/${jobId}`);
-      const data: Job = await res.json();
-      setJob(data);
-      if (data.status === "completed" || data.status === "failed") {
-        clearInterval(interval);
-        setLoading(false);
-        void loadMeta();
-      }
-    }, 800);
-    return () => clearInterval(interval);
-  }, [loadMeta]);
+    const existing = localStorage.getItem(SESSION_KEY);
+    if (existing) {
+      setSessionId(existing);
+      void refreshSession(existing);
+      return;
+    }
 
-  const runAgent = async () => {
-    setLoading(true);
-    setJob(null);
-    const res = await fetch(`${API}/agent/jobs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        quantity,
-        max_unit_price_eur: maxUnit,
-        corridor,
-        delivery_by: deliveryBy,
-        product: "Glass jar 250ml + lid",
-      }),
-    });
-    const created: Job = await res.json();
-    setJob(created);
-    pollJob(created.id);
+    fetch(`${API}/chat/sessions`, { method: "POST" })
+      .then((r) => r.json())
+      .then((data) => {
+        localStorage.setItem(SESSION_KEY, data.session_id);
+        setSessionId(data.session_id);
+        setMessages(data.messages);
+        setPhase(data.phase);
+      });
+  }, [refreshSession]);
+
+  useEffect(() => {
+    const prevCount = (bottomRef.current as any)?._prevCount ?? 0;
+    if (messages.length > prevCount) {
+      scrollDown();
+    }
+    if (bottomRef.current) (bottomRef.current as any)._prevCount = messages.length;
+  }, [messages, job]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    pollRef.current = setInterval(() => void refreshSession(sessionId), 1200);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [sessionId, refreshSession]);
+
+  const sendMessage = async () => {
+    if (!sessionId || !input.trim() || sending) return;
+    setSending(true);
+    const text = input.trim();
+    setInput("");
+    try {
+      const res = await fetch(`${API}/chat/sessions/${sessionId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text }),
+      });
+      const data = await res.json();
+      setMessages((prev) => {
+        if (idsEqual(prev || [], data.messages || [])) return prev;
+        return data.messages;
+      });
+      setPhase(data.phase);
+      setVerified(data.verified);
+      if (data.job) setJob(data.job);
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
-    <main style={{ maxWidth: 1100, margin: "0 auto", padding: "2rem 1.25rem" }}>
-      <header style={{ marginBottom: "2rem" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
-          <h1 style={{ fontSize: "1.75rem", fontWeight: 700 }}>PackRoute Agent</h1>
-          <span className={`badge ${payment?.demo_mode ? "demo" : "live"}`}>
-            {payment?.demo_mode
-              ? "Demo x402"
-              : payment?.quantoz_enabled
-                ? `Live ${payment.asset} (Quantoz)`
-                : `Live TestNet ${payment?.asset ?? "USDC"}`}
-          </span>
+    <main className="app-shell">
+      <header className="app-header">
+        <div>
+          <h1>PackRoute Agent</h1>
+          <p className="subtitle">
+            Chat to verify email · Agent procures via x402 (USDC on Algorand) — no subscriptions, no API keys
+          </p>
         </div>
-        <p style={{ color: "var(--muted)", marginTop: "0.5rem", maxWidth: 640 }}>
-          Autonomous EU F&amp;B packaging procurement — agent pays per API call via x402 on Algorand,
-          then settles supplier checkout within your rules.
-        </p>
+        <span className={`badge ${payment?.demo_mode ? "demo" : "live"}`}>
+          {payment?.demo_mode ? "Demo x402" : `Live ${payment?.asset ?? "USDC"}`}
+        </span>
       </header>
 
-      <div className="grid-2">
-        <section className="card">
-          <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>New sourcing job</h2>
-          <p style={{ fontSize: "0.85rem", color: "var(--muted)", marginBottom: "1rem" }}>
-            Demo: Amsterdam jam producer sourcing glass jars from Germany → Netherlands corridor.
-          </p>
-
-          <div className="field">
-            <label>Quantity (units)</label>
-            <input type="number" value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
-          </div>
-          <div className="field">
-            <label>Max unit price (€)</label>
-            <input type="number" step="0.01" value={maxUnit} onChange={(e) => setMaxUnit(Number(e.target.value))} />
-          </div>
-          <div className="field">
-            <label>Trade corridor</label>
-            <select value={corridor} onChange={(e) => setCorridor(e.target.value)}>
-              <option value="DE-NL">Germany → Netherlands</option>
-              <option value="DE-FR">Germany → France</option>
-              <option value="DE-IT">Germany → Italy</option>
-            </select>
-          </div>
-          <div className="field">
-            <label>Deliver by</label>
-            <input type="date" value={deliveryBy} onChange={(e) => setDeliveryBy(e.target.value)} />
-          </div>
-
-          <button className="btn-primary" disabled={loading} onClick={() => void runAgent()}>
-            {loading ? "Agent running…" : "Run PackRoute Agent"}
-          </button>
-        </section>
-
-        <section className="card">
-          <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>Agent wallet</h2>
-          {wallet ? (
-            <div style={{ fontSize: "0.9rem" }}>
-              <p style={{ marginBottom: "0.5rem" }}>
-                <span style={{ color: "var(--muted)" }}>Spent today:</span>{" "}
-                <strong>${wallet.daily_spent_usd.toFixed(2)}</strong> / ${wallet.max_daily_spend_usd}
-              </p>
-              <p style={{ marginBottom: "0.5rem" }}>
-                <span style={{ color: "var(--muted)" }}>Total spent:</span>{" "}
-                <strong>${wallet.total_spent_usd.toFixed(2)}</strong>
-              </p>
-              {wallet.agent_address && (
-                <p style={{ fontSize: "0.75rem", color: "var(--muted)", wordBreak: "break-all" }}>
-                  Agent: {wallet.agent_address}
-                </p>
-              )}
-            </div>
-          ) : (
-            <p style={{ color: "var(--muted)" }}>Loading…</p>
-          )}
-        </section>
-      </div>
-
-      {job && (
-        <section className="card" style={{ marginTop: "1.25rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-            <h2 style={{ fontSize: "1.1rem" }}>Agent run</h2>
-            <span className="badge">{job.status}</span>
-          </div>
-
-          {job.steps.map((step) => (
-            <div key={step.id} className="step">
-              <div className={`step-icon ${step.status}`}>{stepSymbol(step.status)}</div>
-              <div>
-                <div style={{ fontWeight: 600 }}>{step.label}</div>
-                {step.detail && <div style={{ fontSize: "0.85rem", color: "var(--muted)" }}>{step.detail}</div>}
-                {step.tx_id && !step.tx_id.startsWith("DEMO") && (
-                  <a href={`${LORA}/${step.tx_id}`} target="_blank" rel="noreferrer" style={{ fontSize: "0.8rem" }}>
-                    View tx →
-                  </a>
-                )}
+      <div className="app-grid">
+        <section className="chat-panel card">
+          <div className="chat-messages">
+            {messages.map((m) => (
+              <div key={m.id} className={`chat-row`}>
+                <div className={`chat-avatar ${m.role}`}>{m.role === "user" ? "Y" : "P"}</div>
+                <div className={`chat-bubble chat-${m.role}`}>
+                  <div className="chat-role">{m.role === "user" ? "You" : "PackRoute Agent"}</div>
+                  <div className="chat-text">{renderMarkdownLite(m.content)}</div>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+            <div ref={bottomRef} />
+          </div>
 
-          {job.result && (
-            <div
-              style={{
-                marginTop: "1rem",
-                padding: "1rem",
-                background: "var(--accent-dim)",
-                borderRadius: 8,
-                border: "1px solid var(--accent)",
-              }}
-            >
-              <div style={{ fontWeight: 700, marginBottom: "0.5rem" }}>Order confirmed: {job.result.order_id}</div>
-              <p style={{ fontSize: "0.9rem" }}>{job.result.explanation}</p>
-              <p style={{ fontSize: "0.85rem", color: "var(--muted)", marginTop: "0.5rem" }}>
-                {job.result.supplier_name} · {job.result.quantity} units · €{job.result.total_eur.toFixed(2)} total
-                (incl. €{job.result.freight_eur.toFixed(2)} freight)
-              </p>
+          {!verified && phase === "awaiting_email" && (
+            <div className="quick-chips">
+              <button type="button" onClick={() => setInput("demo@jamworks.nl")}>
+                demo@jamworks.nl
+              </button>
             </div>
           )}
 
-          {job.error && (
-            <p style={{ color: "var(--error)", marginTop: "1rem" }}>{job.error}</p>
-          )}
-
-          {job.spends.length > 0 && (
-            <div style={{ marginTop: "1.25rem" }}>
-              <h3 style={{ fontSize: "0.95rem", marginBottom: "0.5rem" }}>x402 payment log</h3>
-              <table style={{ width: "100%", fontSize: "0.8rem", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ color: "var(--muted)", textAlign: "left" }}>
-                    <th style={{ padding: "0.4rem 0" }}>Endpoint</th>
-                    <th>Amount</th>
-                    <th>Tx</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {job.spends.map((s, i) => (
-                    <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
-                      <td style={{ padding: "0.4rem 0" }}>{s.endpoint}</td>
-                      <td>${s.amount_usd.toFixed(2)}{s.demo ? " (demo)" : ""}</td>
-                      <td>
-                        {s.tx_id && !s.tx_id.startsWith("DEMO") ? (
-                          <a href={`${LORA}/${s.tx_id}`} target="_blank" rel="noreferrer">
-                            {s.tx_id.slice(0, 10)}…
-                          </a>
-                        ) : (
-                          <span style={{ color: "var(--muted)" }}>{s.tx_id?.slice(0, 16) ?? "—"}</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {verified && !job?.result && (
+            <div className="quick-chips">
+              <button
+                type="button"
+                onClick={() =>
+                  setInput(
+                    "I need 500 glass jars from Germany to Netherlands, max $0.85 per unit, deliver by 2026-06-20",
+                  )
+                }
+              >
+                Example order
+              </button>
+              <button type="button" onClick={() => setInput("yes")}>
+                yes
+              </button>
             </div>
           )}
+
+          <form
+            className="chat-input-row"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void sendMessage();
+            }}
+          >
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={
+                phase === "awaiting_email"
+                  ? "Enter your email…"
+                  : phase === "awaiting_otp"
+                    ? "Enter 6-digit OTP…"
+                    : "Describe packaging need or reply yes…"
+              }
+              disabled={sending}
+            />
+            <button type="submit" className="btn-send" disabled={sending || !input.trim()}>
+              {sending ? "…" : "Send"}
+            </button>
+          </form>
         </section>
-      )}
 
-      <footer style={{ marginTop: "2rem", fontSize: "0.8rem", color: "var(--muted)" }}>
-        PackRoute Agent · Algorand x402 Agentic Commerce Hackathon · Agentic Commerce track
-      </footer>
+        <aside className="side-panel">
+          <section className="card">
+            <h2>Session</h2>
+            <p className="meta-row">
+              <span>Status</span>
+              <strong>{verified ? "Verified ✓" : (phase?.replace(/_/g, " ") ?? "loading...")}</strong>
+            </p>
+            <p className="meta-row">
+              <span>x402</span>
+              <strong>Pay-per-request</strong>
+            </p>
+          </section>
+
+          {job && (
+            <section className="card job-card">
+              <div className="job-header">
+                <h2>Live procurement</h2>
+                <span className={`badge ${job.status}`}>{job.status}</span>
+              </div>
+              {job.steps.map((step) => (
+                <div key={step.id} className="step">
+                  <div className={`step-icon ${step.status}`}>
+                    {step.status === "done" ? "✓" : step.status === "running" ? "…" : step.status === "error" ? "✗" : "○"}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{step.label}</div>
+                    {step.detail && (
+                      <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>{step.detail}</div>
+                    )}
+                    {step.tx_id && !step.tx_id.startsWith("DEMO") && (
+                      <a href={`${LORA}/${step.tx_id}`} target="_blank" rel="noreferrer">
+                        View on Lora Testnet
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {job.spends.length > 0 && (
+                <div className="spend-log">
+                  <h3>x402 payments</h3>
+                  {job.spends.map((s, i) => (
+                    <div key={i} className="spend-item">
+                      <div className="spend-row">
+                        <span>{s.endpoint.split("?")[0]}</span>
+                        <span>${s.amount_usd.toFixed(4)}{s.demo ? " (demo)" : ""}</span>
+                      </div>
+                      {s.tx_id && !s.tx_id.startsWith("DEMO") && (
+                        <a
+                          href={`${LORA}/${s.tx_id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ fontSize: "0.72rem", paddingLeft: "0.25rem" }}
+                        >
+                          Lora Testnet tx
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                  <div className="spend-row" style={{ marginTop: "0.5rem", fontWeight: 600, color: "var(--text)" }}>
+                    <span>Total</span>
+                    <span>${job.spends.reduce((s, p) => s + p.amount_usd, 0).toFixed(4)}</span>
+                  </div>
+                </div>
+              )}
+              {job.result && (
+                <div style={{ marginTop: "1rem" }}>
+                  <div className="spend-row" style={{ color: "var(--text)", fontWeight: 600 }}>
+                    <span>Order {job.result.order_id}</span>
+                    <span>${job.result.total_usd.toFixed(2)}</span>
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: "0.25rem" }}>
+                    {job.result.supplier_name}
+                  </div>
+                </div>
+              )}
+              {(job.status === "completed" || job.status === "failed") && (
+                <a
+                  href={`${API}/agent/jobs/${job.id}/receipt`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-receipt"
+                >
+                  Download PDF Receipt
+                </a>
+              )}
+            </section>
+          )}
+        </aside>
+      </div>
     </main>
   );
 }

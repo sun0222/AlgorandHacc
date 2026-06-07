@@ -3,7 +3,7 @@ export interface FreightOption {
   carrier_name: string;
   origin_country: string;
   destination_country: string;
-  cost_eur: number;
+  cost_usd: number;
   eta_days: number;
   corridor: string;
 }
@@ -24,7 +24,7 @@ export function getFreightQuotes(params: {
       carrier_name: "EU Freight Express",
       origin_country: origin,
       destination_country: destination,
-      cost_eur: Math.round((base * 1.15) * 100) / 100,
+      cost_usd: Math.round((base * 1.15) * 100) / 100,
       eta_days: 3,
       corridor,
     },
@@ -33,7 +33,7 @@ export function getFreightQuotes(params: {
       carrier_name: "Rhine Logistics",
       origin_country: origin,
       destination_country: destination,
-      cost_eur: Math.round(base * 100) / 100,
+      cost_usd: Math.round(base * 100) / 100,
       eta_days: 5,
       corridor,
     },

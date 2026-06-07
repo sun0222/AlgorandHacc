@@ -20,6 +20,9 @@
   "devDependencies": {
     "concurrently": "^9.1.2"
   },
+  "dependencies": {
+    "pdfkit": "^0.13.0"
+  },
   "engines": {
     "node": ">=20"
   }

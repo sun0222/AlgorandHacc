@@ -4,7 +4,7 @@ export interface PackagingSupplier {
   city: string;
   country: string;
   product: string;
-  unit_price_eur: number;
+  unit_price_usd: number;
   moq: number;
   lead_days: number;
   food_grade: boolean;
@@ -17,7 +17,7 @@ export const PACKAGING_SUPPLIERS: PackagingSupplier[] = [
     city: "Cologne",
     country: "DE",
     product: "Glass jar 250ml + lid",
-    unit_price_eur: 0.72,
+    unit_price_usd: 0.72,
     moq: 200,
     lead_days: 7,
     food_grade: true,
@@ -28,7 +28,7 @@ export const PACKAGING_SUPPLIERS: PackagingSupplier[] = [
     city: "Munich",
     country: "DE",
     product: "Glass jar 250ml + lid",
-    unit_price_eur: 0.81,
+    unit_price_usd: 0.81,
     moq: 100,
     lead_days: 5,
     food_grade: true,
@@ -39,7 +39,7 @@ export const PACKAGING_SUPPLIERS: PackagingSupplier[] = [
     city: "Hamburg",
     country: "DE",
     product: "Glass jar 250ml + lid",
-    unit_price_eur: 0.68,
+    unit_price_usd: 0.68,
     moq: 500,
     lead_days: 10,
     food_grade: true,
@@ -50,7 +50,7 @@ export const PACKAGING_SUPPLIERS: PackagingSupplier[] = [
     city: "Dresden",
     country: "DE",
     product: "Glass jar 250ml + lid",
-    unit_price_eur: 0.89,
+    unit_price_usd: 0.89,
     moq: 50,
     lead_days: 4,
     food_grade: true,

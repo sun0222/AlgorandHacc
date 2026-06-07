@@ -1,5 +1,5 @@
 export interface AgentRules {
-  max_unit_price_eur: number;
+  max_unit_price_usd: number;
   quantity: number;
   delivery_by: string;
   corridor: string;
@@ -27,12 +27,13 @@ export interface JobStep {
 export interface JobResult {
   supplier_id: string;
   supplier_name: string;
-  unit_price_eur: number;
+  unit_price_usd: number;
   quantity: number;
-  freight_eur: number;
-  total_eur: number;
+  freight_usd: number;
+  total_usd: number;
   order_id: string;
   explanation: string;
+  analytics_insight?: string;
 }
 
 export type JobStatus = "queued" | "running" | "completed" | "failed";

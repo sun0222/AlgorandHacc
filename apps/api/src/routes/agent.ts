@@ -40,7 +40,7 @@ router.get("/jobs/:id", (req, res) => {
 router.post("/jobs", (req, res) => {
   const body = req.body ?? {};
   const rules: AgentRules = {
-    max_unit_price_eur: Number(body.max_unit_price_eur ?? 0.85),
+    max_unit_price_usd: Number(body.max_unit_price_usd ?? 0.85),
     quantity: Number(body.quantity ?? 500),
     delivery_by: String(body.delivery_by ?? "2026-06-20"),
     corridor: String(body.corridor ?? "DE-NL"),

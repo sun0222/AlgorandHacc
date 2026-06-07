@@ -1,5 +1,6 @@
 export interface WalletState {
   daily_spent_usd: number;
+  daily_api_spent_usd: number;
   daily_reset_date: string;
   total_spent_usd: number;
   agent_address?: string;
@@ -7,6 +8,7 @@ export interface WalletState {
 
 const state: WalletState = {
   daily_spent_usd: 0,
+  daily_api_spent_usd: 0,
   daily_reset_date: new Date().toISOString().slice(0, 10),
   total_spent_usd: 0,
 };
@@ -15,6 +17,7 @@ function resetDailyIfNeeded(): void {
   const today = new Date().toISOString().slice(0, 10);
   if (state.daily_reset_date !== today) {
     state.daily_spent_usd = 0;
+    state.daily_api_spent_usd = 0;
     state.daily_reset_date = today;
   }
 }
@@ -47,21 +50,22 @@ export function assertCanSpend(amountUsd: number, category: "api" | "checkout"):
     throw new Error(`Daily spend limit $${maxDaily} would be exceeded`);
   }
   if (category === "api") {
-    const apiSpent = state.daily_spent_usd;
-    if (apiSpent + amountUsd > maxApi) {
+    if (state.daily_api_spent_usd + amountUsd > maxApi) {
       throw new Error(`API spend limit $${maxApi} would be exceeded`);
     }
   }
 }
 
-export function recordSpend(amountUsd: number): void {
+export function recordSpend(amountUsd: number, category: "api" | "checkout" = "api"): void {
   resetDailyIfNeeded();
   state.daily_spent_usd += amountUsd;
   state.total_spent_usd += amountUsd;
+  if (category === "api") state.daily_api_spent_usd += amountUsd;
 }
 
 export function resetWalletForDemo(): void {
   state.daily_spent_usd = 0;
+  state.daily_api_spent_usd = 0;
   state.total_spent_usd = 0;
   state.daily_reset_date = new Date().toISOString().slice(0, 10);
 }

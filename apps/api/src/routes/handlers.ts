@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PACKAGING_SUPPLIERS, getFreightQuotes } from "@packroute/mocks";
+import { PACKAGING_SUPPLIERS, getFreightQuotes, getCorridorAnalytics } from "@packroute/mocks";
 
 export function healthHandler(_req: Request, res: Response): void {
   res.json({
@@ -37,7 +37,7 @@ export function freightQuoteHandler(req: Request, res: Response): void {
 }
 
 export function checkoutHandler(req: Request, res: Response): void {
-  const { supplier_id, quantity, total_eur, delivery_by } = req.body ?? {};
+  const { supplier_id, quantity, total_usd, delivery_by } = req.body ?? {};
   const supplier = PACKAGING_SUPPLIERS.find((s) => s.id === supplier_id);
 
   if (!supplier) {
@@ -52,9 +52,20 @@ export function checkoutHandler(req: Request, res: Response): void {
     supplier_id,
     supplier_name: supplier.name,
     quantity: Number(quantity),
-    total_eur: Number(total_eur),
+    total_usd: Number(total_usd),
     delivery_by,
     settled_at: new Date().toISOString(),
     payment_rail: "x402-algorand",
+  });
+}
+
+export function marketAnalyticsHandler(_req: Request, res: Response): void {
+  const trends = getCorridorAnalytics();
+  const recommended = trends.find((t: { recommended: boolean }) => t.recommended);
+  res.json({
+    corridors: trends,
+    recommended_corridor: recommended?.corridor ?? "DE-NL",
+    generated_at: new Date().toISOString(),
+    source: "PackRoute EU Corridor Analytics (mock)",
   });
 }

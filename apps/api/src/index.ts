@@ -11,12 +11,15 @@ import { paymentMiddleware, x402ResourceServer } from "@x402-avm/express";
 import { registerExactAvmScheme } from "@x402-avm/avm/exact/server";
 import { HTTPFacilitatorClient } from "@x402-avm/core/server";
 import { agentRouter } from "./routes/agent.js";
+import { chatRouter } from "./routes/chat.js";
 import {
   checkoutHandler,
   freightQuoteHandler,
   healthHandler,
   packagingPricesHandler,
+  marketAnalyticsHandler,
 } from "./routes/handlers.js";
+import { receiptHandler } from "./routes/receipt.js";
 import { initX402Client, isDemoMode } from "./agent/x402-client.js";
 import { getPaymentConfig, usesQuantozFacilitator } from "./config/payments.js";
 
@@ -39,6 +42,8 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/agent", agentRouter);
+app.use("/chat", chatRouter);
+app.get("/agent/jobs/:id/receipt", receiptHandler);
 
 function buildX402Routes(): Record<string, object> {
   if (!PAY_TO || isDemoMode()) {
@@ -114,6 +119,7 @@ if (Object.keys(x402Routes).length > 0) {
 app.get("/api/v1/packaging-prices", packagingPricesHandler);
 app.get("/api/v1/freight-quote", freightQuoteHandler);
 app.post("/api/v1/checkout", checkoutHandler);
+app.get("/api/v1/market-analytics", marketAnalyticsHandler);
 
 initX402Client();
 

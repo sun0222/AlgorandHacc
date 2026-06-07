@@ -115,7 +115,7 @@ async function demoFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
         status: "confirmed",
         supplier_id: body.supplier_id,
         quantity: body.quantity,
-        total_eur: body.total_eur,
+        total_usd: body.total_usd,
         demo: true,
         tx_id: txId,
       }),
